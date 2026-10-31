@@ -1,79 +1,90 @@
-# Failure semantics для `@BeforeSuite` и `@AfterSuite`
+# Failure semantics for `@BeforeSuite` and `@AfterSuite`
 
-Этот воспроизводимый эксперимент проверяет, что происходит при ошибках в
-`@BeforeSuite`, тесте и `@AfterSuite`, а также при ошибке `@BeforeClass` в JUnit 4.
-Он отделён от Workshop-проектов, чтобы
-намеренно падающие сценарии не влияли на их обычный запуск.
+This reproducible experiment checks what happens on failures in
+`@BeforeSuite`, in the test itself, and in `@AfterSuite`, as well as on a
+`@BeforeClass` failure in JUnit 4. It is kept separate from the Workshop
+projects so that the intentionally failing scenarios don't affect their
+normal runs.
 
-> **Важно:** 10 из 11 сценариев намеренно завершают Maven с ошибкой.
-> Это ожидаемая часть примеров. Общий скрипт `verify.ps1` завершается успешно,
-> только когда все 11 сценариев соответствуют ожиданиям, включая ожидаемые ошибки.
+> **Important:** 10 of 11 scenarios intentionally make Maven exit with an
+> error. This is an expected part of the examples. The overall
+> `verify.ps1` script succeeds only when all 11 scenarios match
+> expectations, including the expected failures.
+
+> A Russian version of this document is available in
+> [`README_RU.md`](README_RU.md).
 
 <a id="contents"></a>
 
-## Содержание
+## Contents
 
-- [Контекст эксперимента](#experiment-context)
-- [Требования и общая проверка](#verification)
+- [Experiment context](#experiment-context)
+- [Requirements and overall verification](#verification)
 - [JUnit 6.1.3](#junit-6)
 - [JUnit 5.14.4](#junit-5)
 - [JUnit 4.13.2](#junit-4)
 - [TestNG 7.12.0](#testng)
-- [Граница вывода](#scope)
-- [Повторная проверка 26 октября 2026 года](#verification-2026-10-26)
-- [Лицензия](#license)
+- [Scope of the findings](#scope)
+- [Re-verification on October 26, 2026](#verification-2026-10-26)
+- [License](#license)
 
 <a id="experiment-context"></a>
 
-## Контекст эксперимента
+## Experiment context
 
-Эксперимент подготовлен для статьи «BeforeSuite и AfterSuite в JUnit 5/6:
-догнал ли JUnit TestNG». Статья готовится к публикации; публичная ссылка будет
-добавлена после выхода материала.
-При сравнении жизненных циклов возник практический вопрос: если подготовка
-окружения выбросит исключение, начнут ли выполняться тесты и будет ли вызван
-завершающий хук, отвечающий за освобождение ресурсов?
+The experiment was prepared for an article, "BeforeSuite and AfterSuite in
+JUnit 5/6: has JUnit caught up with TestNG?". The article is being
+prepared for publication; a public link will be added once it is out.
+While comparing the lifecycles, a practical question came up: if
+environment setup throws an exception, do tests start running, and is the
+teardown hook responsible for releasing resources still called?
 
-Для ответа используются отдельные Maven-проекты JUnit 6, JUnit 5, JUnit 4 и
-TestNG. JUnit 6 и 5 проверяются раздельно; в TestNG сравниваются обычный
-`@AfterSuite` и `@AfterSuite(alwaysRun = true)`; в JUnit 4 – `@BeforeClass` /
-`@AfterClass` обычного класса и класса набора. Дополнительные сценарии JUnit 6 и
-TestNG показывают ошибки в самом тесте и в завершающем хуке.
+To answer this, separate Maven projects are used for JUnit 6, JUnit 5,
+JUnit 4, and TestNG. JUnit 6 and 5 are verified separately; for TestNG, a
+plain `@AfterSuite` is compared against `@AfterSuite(alwaysRun = true)`;
+for JUnit 4, `@BeforeClass` / `@AfterClass` of a regular class is compared
+against that of a suite class. Additional JUnit 6 and TestNG scenarios
+show failures in the test itself and in the teardown hook.
 
-Примеры намеренно минимальны: вместо внешнего сервера или базы данных они выводят
-события `[EVENT]`. Это позволяет отделить факт вызова хука от корректности очистки
-реального, в том числе частично созданного ресурса. Вызов завершающего хука сам по
-себе ещё не доказывает, что все ресурсы освобождены.
+The examples are intentionally minimal: instead of an external server or a
+database, they print `[EVENT]` events. This lets you separate the fact
+that a hook was called from the correctness of cleaning up a real,
+possibly partially created, resource. Calling the teardown hook by itself
+does not prove that all resources were released.
 
-Этот README хранит назначение эксперимента, команды воспроизведения и ожидаемые
-результаты. Наблюдения относятся к указанным версиям и способу запуска;
-при обновлении зависимостей соответствующие сценарии нужно проверять заново.
-Эксперимент не изменяет Workshop-проекты.
+This README holds the purpose of the experiment, the commands to
+reproduce it, and the expected results. The observations apply to the
+stated versions and the way the examples are run; when dependencies are
+updated, the corresponding scenarios should be re-verified. The experiment
+does not modify the Workshop projects.
 
-В проекте [`junit-4.13.2/`](#junit-4) также сохранена проверка
-`@ClassRule(order = ...)`. Она запускается отдельной командой и должна завершаться
-успешно. Исходники проверки порядка и обработки ошибок используют один `pom.xml`.
+The [`junit-4.13.2/`](#junit-4) project also keeps a check of
+`@ClassRule(order = ...)`. It is run with a separate command and is
+expected to succeed. The sources for the order check and for the failure
+handling share a single `pom.xml`.
 
-В каталоге четыре самостоятельных Maven-проекта, без общего агрегирующего `pom.xml`:
+The repository contains four independent Maven projects, with no common
+aggregating `pom.xml`:
 
-| Проект                                    | Что содержит                                                                                  |
-|-------------------------------------------|-----------------------------------------------------------------------------------------------|
-| [`junit-6.1.3/`](junit-6.1.3/pom.xml)     | Три сценария: ошибка подготовки набора, теста и завершающего хука                             |
-| [`junit-5.14.4/`](junit-5.14.4/pom.xml)   | Один сценарий: ошибка подготовки набора                                                       |
-| [`junit-4.13.2/`](junit-4.13.2/pom.xml)   | Два сценария ошибки подготовки и одна проверка порядка Rules                                  |
-| [`testng-7.12.0/`](testng-7.12.0/pom.xml) | Четыре сценария: ошибка подготовки с `alwaysRun` и без него, ошибка теста и завершающего хука |
+| Project                                    | What it contains                                                                               |
+|---------------------------------------------|-------------------------------------------------------------------------------------------------|
+| [`junit-6.1.3/`](junit-6.1.3/pom.xml)       | Three scenarios: suite setup failure, test failure, and teardown hook failure                  |
+| [`junit-5.14.4/`](junit-5.14.4/pom.xml)     | One scenario: suite setup failure                                                              |
+| [`junit-4.13.2/`](junit-4.13.2/pom.xml)     | Two setup-failure scenarios and one Rules ordering check                                       |
+| [`testng-7.12.0/`](testng-7.12.0/pom.xml)   | Four scenarios: setup failure with and without `alwaysRun`, test failure, and teardown failure  |
 
 <a id="verification"></a>
 
-## Требования и общая проверка
+## Requirements and overall verification
 
-Для примеров нужны JDK 17 или новее (в `pom.xml` задан `release=17`) и Maven 3.9.x.
-Для общего скрипта нужен PowerShell 7.2 или новее (`pwsh`); отдельные команды Maven
-можно выполнять без него. `java` и `mvn` должны быть доступны в `PATH`, а Maven
-должен использовать нужный JDK. При первом запуске нужен доступ к Maven Central
-либо настроенному зеркалу для скачивания зависимостей и плагинов.
+The examples require JDK 17 or newer (`pom.xml` sets `release=17`) and
+Maven 3.9.x. The overall script requires PowerShell 7.2 or newer (`pwsh`);
+individual Maven commands can be run without it. `java` and `mvn` must be
+available on `PATH`, and Maven must use the correct JDK. The first run
+needs access to Maven Central or a configured mirror to download
+dependencies and plugins.
 
-Проверенная среда и версии зависимостей:
+Verified environment and dependency versions:
 
 - JDK 21.0.10;
 - Maven 3.9.12;
@@ -83,7 +94,8 @@ TestNG показывают ошибки в самом тесте и в заве
 - JUnit 4.13.2;
 - TestNG 7.12.0.
 
-Проверить локальную среду и запустить все сценарии из корня этого проекта:
+Check the local environment and run all scenarios from the root of this
+project:
 
 ```powershell
 java -version
@@ -91,55 +103,61 @@ mvn -version
 pwsh -NoProfile -File ./verify.ps1
 ```
 
-[`verify.ps1`](verify.ps1) последовательно запускает 11 сценариев и проверяет:
+[`verify.ps1`](verify.ps1) runs 11 scenarios sequentially and checks:
 
-- точный код завершения Maven: 1 для намеренной ошибки, 0 для `ClassRuleOrderTest`;
-- точную последовательность `[EVENT]` / `[EVENTS]`, включая отсутствие лишнего запуска теста;
-- наличие XML-отчётов Surefire и записей о тестах;
-- ровно одну ожидаемую ошибку с заданными типом и сообщением для ошибочного сценария
-  либо отсутствие ошибок для успешного.
+- the exact Maven exit code: 1 for an intentional failure, 0 for
+  `ClassRuleOrderTest`;
+- the exact sequence of `[EVENT]` / `[EVENTS]` lines, including the
+  absence of an extraneous test run;
+- the presence of Surefire XML reports and test case entries;
+- exactly one expected failure with the given type and message for a
+  failing scenario, or no failures for a successful one.
 
-Ошибка компиляции, скачивания зависимостей, отсутствие отчётов, неожиданная ошибка
-или расхождение событий приводят к неуспешной проверке. Итоговый код скрипта:
-`0` – все ожидания выполнены; `1` – есть расхождение или ошибка самого запуска.
+A compilation error, a dependency download error, missing reports, an
+unexpected failure, or a mismatch in events all result in a failed
+verification. The script's final exit code is `0` when all expectations
+are met, and `1` when there is a mismatch or the run itself failed.
 
-Каждый запуск скрипта получает новый каталог `target/verification/<run-id>/`.
-В нём сохраняются `summary.json`, а для каждого проекта и сценария – `maven.log`
-и XML-отчёты в `reports/`. Старые отчёты не используются, файлы предыдущих запусков
-не удаляются. Скрипт вычисляет пути относительно собственного расположения.
+Every run of the script gets a new directory
+`target/verification/<run-id>/`. It stores `summary.json`, and for every
+project and scenario a `maven.log` plus the XML reports under `reports/`.
+Previous reports are not used, and files from earlier runs are not
+deleted. The script computes paths relative to its own location.
 
-Самопроверка логики скрипта (без запуска Maven):
+Self-test of the script's logic (without running Maven):
 
 ```powershell
 pwsh -NoProfile -File ./tests/verify-script.tests.ps1
 ```
 
-Эти проверки используют искусственные отчёты и проверяют, что скрипт отличает
-ожидаемую ошибку от неожиданного успеха, неверной последовательности событий,
-другого исключения, дополнительной ошибки и отсутствующего или повреждённого отчёта.
+These checks use synthetic reports to verify that the script distinguishes
+an expected failure from an unexpected success, a wrong event sequence, a
+different exception, an extra failure, and a missing or corrupted report.
 
-Для каждого блока команд сначала вернитесь в каталог `failure-semantics-experiment/`:
-команда `cd` в начале блока отсчитывается от него. Запускайте сценарии отдельно,
-передавая имя класса через `-Dscenario=...`; обычный `mvn test` без выбора сценария
-не является командой запуска всех примеров.
+For each command block, first go back to the
+`failure-semantics-experiment/` directory: the `cd` at the start of each
+block is relative to it. Run the scenarios individually, passing the class
+name via `-Dscenario=...`; a plain `mvn test` without selecting a scenario
+is not a command for running all examples.
 
-Сценарии ошибок должны завершаться ненулевым кодом: ошибка является частью
-сценария. Последовательность событий видна по строкам с префиксом `[EVENT]`.
-Исключение – успешная проверка `ClassRuleOrderTest`, которая печатает `[EVENTS]`.
+Failure scenarios are expected to exit with a non-zero code: the failure
+is part of the scenario. The event sequence is visible in lines prefixed
+with `[EVENT]`. The exception is the successful `ClassRuleOrderTest`
+check, which prints `[EVENTS]`.
 
 <a id="junit-6"></a>
 
 ## JUnit 6.1.3
 
-Проект использует Jupiter и Suite API/Engine версии 6.1.3. Каждый класс набора
-выбирает свой вложенный `SelectedCase` через `@SelectClasses`:
+The project uses Jupiter and the Suite API/Engine version 6.1.3. Each
+suite class selects its own nested `SelectedCase` via `@SelectClasses`:
 
 - [`BeforeFailsSuite`](junit-6.1.3/src/test/java/com/example/junit6/BeforeFailsSuite.java) –
-  `@BeforeSuite` бросает исключение; тест не выполняется, `@AfterSuite` вызывается.
+  `@BeforeSuite` throws; the test does not run, `@AfterSuite` is called.
 - [`TestFailsSuite`](junit-6.1.3/src/test/java/com/example/junit6/TestFailsSuite.java) –
-  подготовка успешна, тест вызывает `fail(...)`, после него выполняется `@AfterSuite`.
+  setup succeeds, the test calls `fail(...)`, `@AfterSuite` runs afterward.
 - [`AfterFailsSuite`](junit-6.1.3/src/test/java/com/example/junit6/AfterFailsSuite.java) –
-  подготовка и тест успешны, исключение бросает `@AfterSuite`.
+  setup and the test succeed, `@AfterSuite` throws.
 
 ```powershell
 cd junit-6.1.3
@@ -148,49 +166,54 @@ mvn -Dscenario=TestFailsSuite test
 mvn -Dscenario=AfterFailsSuite test
 ```
 
-Ожидаемые последовательности:
+Expected event sequences:
 
-| Сценарий              | События                                          |
-|-----------------------|--------------------------------------------------|
-| Ошибка `@BeforeSuite` | `beforeSuite`, `afterSuite`; тест не выполняется |
-| Ошибка теста          | `beforeSuite`, `test`, `afterSuite`              |
-| Ошибка `@AfterSuite`  | `beforeSuite`, `test`, `afterSuite`              |
+| Scenario                | Events                                              |
+|--------------------------|------------------------------------------------------|
+| `@BeforeSuite` failure   | `beforeSuite`, `afterSuite`; the test does not run   |
+| Test failure             | `beforeSuite`, `test`, `afterSuite`                  |
+| `@AfterSuite` failure    | `beforeSuite`, `test`, `afterSuite`                  |
 
-Во всех трёх случаях запуск ошибочный.
+In all three cases, the run ends with an error.
 
 <a id="junit-5"></a>
 
 ## JUnit 5.14.4
 
-Проект использует Jupiter 5.14.4 и Suite API/Engine из Platform 1.14.4.
+The project uses Jupiter 5.14.4 and the Suite API/Engine from Platform
+1.14.4.
 [`BeforeFailsSuite`](junit-5.14.4/src/test/java/com/example/junit5/BeforeFailsSuite.java)
-выбирает вложенный `SelectedCase`, но бросает исключение в `@BeforeSuite` до его
-выполнения. Этот пример позволяет отдельно сопоставить ошибку подготовки с JUnit 6.
-Сценариев ошибки самого теста и `@AfterSuite` в этом проекте нет.
+selects a nested `SelectedCase`, but throws in `@BeforeSuite` before it
+runs. This example lets you compare the setup failure separately against
+JUnit 6. This project has no scenarios for a failure in the test itself or
+in `@AfterSuite`.
 
 ```powershell
 cd junit-5.14.4
 mvn -Dscenario=BeforeFailsSuite test
 ```
 
-Ожидаемые события:
+Expected events:
 
 ```text
 [EVENT] beforeSuite
 [EVENT] afterSuite
 ```
 
-Тест не выполняется, `@AfterSuite` вызывается, запуск остаётся ошибочным.
+The test does not run, `@AfterSuite` is called, and the run still ends
+with an error.
 
 <a id="junit-4"></a>
 
 ## JUnit 4.13.2
 
-Единый проект [`junit-4.13.2/`](junit-4.13.2/pom.xml) содержит три запускаемых
-сценария. Два из них проверяют ошибку подготовки:
+The single [`junit-4.13.2/`](junit-4.13.2/pom.xml) project contains three
+runnable scenarios. Two of them check a setup failure:
 
-- [`BeforeClassFailsScenario`](junit-4.13.2/src/test/java/com/example/junit4/BeforeClassFailsScenario.java) – исключение из `@BeforeClass` обычного тестового класса;
-- [`BeforeClassFailsSuite`](junit-4.13.2/src/test/java/com/example/junit4/BeforeClassFailsSuite.java) – исключение из `@BeforeClass` набора с `@RunWith(Suite.class)`.
+- [`BeforeClassFailsScenario`](junit-4.13.2/src/test/java/com/example/junit4/BeforeClassFailsScenario.java) –
+  an exception from `@BeforeClass` of a regular test class;
+- [`BeforeClassFailsSuite`](junit-4.13.2/src/test/java/com/example/junit4/BeforeClassFailsSuite.java) –
+  an exception from `@BeforeClass` of a suite with `@RunWith(Suite.class)`.
 
 ```powershell
 cd junit-4.13.2
@@ -198,59 +221,65 @@ mvn -Dscenario=BeforeClassFailsScenario test
 mvn -Dscenario=BeforeClassFailsSuite test
 ```
 
-| Сценарий      | События                                 | Результат                                                       |
-|---------------|-----------------------------------------|-----------------------------------------------------------------|
-| Обычный класс | `beforeClass`, `afterClass`             | Тест не выполняется, `@AfterClass` вызывается                   |
-| Класс набора  | `suite.beforeClass`, `suite.afterClass` | Выбранный класс не выполняется, `@AfterClass` набора вызывается |
+| Scenario       | Events                                   | Outcome                                                          |
+|----------------|--------------------------------------------|--------------------------------------------------------------------|
+| Regular class  | `beforeClass`, `afterClass`                | The test does not run, `@AfterClass` is called                     |
+| Suite class    | `suite.beforeClass`, `suite.afterClass`    | The selected class does not run, the suite's `@AfterClass` is called |
 
-Во втором сценарии отсутствуют также события `selected.beforeClass` и
-`selected.afterClass`: жизненный цикл выбранного класса не начинается.
-Обе команды завершаются с ошибкой из `@BeforeClass`.
+In the second scenario, the `selected.beforeClass` and
+`selected.afterClass` events are also absent: the selected class's
+lifecycle never starts. Both commands exit with the `@BeforeClass`
+failure.
 
-Это поведение согласуется с [AfterClass (JUnit 4.13.2 API)](https://junit.org/junit4/javadoc/4.13.2/org/junit/AfterClass.html):
-документация явно гарантирует вызов `@AfterClass` даже при исключении из `@BeforeClass`.
+This behavior matches
+[AfterClass (JUnit 4.13.2 API)](https://junit.org/junit4/javadoc/4.13.2/org/junit/AfterClass.html):
+the documentation explicitly guarantees that `@AfterClass` is called even
+when `@BeforeClass` throws.
 
-Третий сценарий – [`ClassRuleOrderTest`](junit-4.13.2/src/test/java/com/example/junit4/ClassRuleOrderTest.java).
-Он программно запускает вспомогательный набор
+The third scenario is
+[`ClassRuleOrderTest`](junit-4.13.2/src/test/java/com/example/junit4/ClassRuleOrderTest.java).
+It programmatically runs the helper suite
 [`OrderedClassRulesSuite`](junit-4.13.2/src/test/java/com/example/junit4/OrderedClassRulesSuite.java)
-через `JUnitCore` и выполняет assertions над успешностью запуска и точным порядком
-событий двух `@ClassRule`: внешнего с `order = 0` и внутреннего с `order = 1`.
-Таким образом, в проекте четыре Java-файла: три запускаемых сценария и один
-вспомогательный набор.
+via `JUnitCore` and asserts both that the run succeeded and the exact
+order of events of two `@ClassRule`s: an outer one with `order = 0` and an
+inner one with `order = 1`. So the project has four Java files: three
+runnable scenarios and one helper suite.
 
-Из папки `junit-4.13.2/`:
+From the `junit-4.13.2/` folder:
 
 ```powershell
 mvn -q -Dscenario=ClassRuleOrderTest test
 ```
 
-Ожидаемый вывод:
+Expected output:
 
 ```text
 [EVENTS] [outer.before, inner.before, test, inner.after, outer.after]
 ```
 
-Эта команда завершается успешно (код 0). JUnit 4.13.2 применяет отдельно
-аннотированные class rules в заданной вложенности: большее значение `order`
-соответствует внутреннему rule. Проверка порядка сохранена как дополнительный
-технический пример; эта подробность не включается в публикуемую статью.
+This command succeeds (exit code 0). JUnit 4.13.2 applies separately
+annotated class rules according to their declared nesting: a larger
+`order` value corresponds to the more inner rule. The ordering check is
+kept as an additional technical example; this detail is not included in
+the article being published.
 
-[Вернуться к содержанию](#contents)
+[Back to contents](#contents)
 
 <a id="testng"></a>
 
 ## TestNG 7.12.0
 
-Проект содержит четыре независимых класса, каждый запускается отдельно:
+The project contains four independent classes, each run separately:
 
 - [`BeforeFailsWithoutAlwaysRunScenario`](testng-7.12.0/src/test/java/com/example/testng/BeforeFailsWithoutAlwaysRunScenario.java) –
-  исключение в `@BeforeSuite`; тест и обычный `@AfterSuite` пропускаются.
+  an exception in `@BeforeSuite`; the test and the plain `@AfterSuite` are
+  skipped.
 - [`BeforeFailsWithAlwaysRunScenario`](testng-7.12.0/src/test/java/com/example/testng/BeforeFailsWithAlwaysRunScenario.java) –
-  то же исключение, но `@AfterSuite(alwaysRun = true)` выполняется.
+  the same exception, but `@AfterSuite(alwaysRun = true)` runs.
 - [`TestFailsScenario`](testng-7.12.0/src/test/java/com/example/testng/TestFailsScenario.java) –
-  подготовка успешна, тест вызывает `fail(...)`, обычный `@AfterSuite` выполняется.
+  setup succeeds, the test calls `fail(...)`, the plain `@AfterSuite` runs.
 - [`AfterFailsScenario`](testng-7.12.0/src/test/java/com/example/testng/AfterFailsScenario.java) –
-  подготовка и тест успешны, исключение бросает обычный `@AfterSuite`.
+  setup and the test succeed, the plain `@AfterSuite` throws.
 
 ```powershell
 cd testng-7.12.0
@@ -260,51 +289,56 @@ mvn -Dscenario=TestFailsScenario test
 mvn -Dscenario=AfterFailsScenario test
 ```
 
-Ожидаемые последовательности:
+Expected event sequences:
 
-| Сценарий                                               | События                                                   |
-|--------------------------------------------------------|-----------------------------------------------------------|
-| Ошибка `@BeforeSuite`, обычный `@AfterSuite`           | только `beforeSuite`; тест и `@AfterSuite` не выполняются |
-| Ошибка `@BeforeSuite`, `@AfterSuite(alwaysRun = true)` | `beforeSuite`, `afterSuite`; тест не выполняется          |
-| Ошибка теста                                           | `beforeSuite`, `test`, `afterSuite`                       |
-| Ошибка `@AfterSuite`                                   | `beforeSuite`, `test`, `afterSuite`                       |
+| Scenario                                                 | Events                                                       |
+|-----------------------------------------------------------|----------------------------------------------------------------|
+| `@BeforeSuite` failure, plain `@AfterSuite`               | only `beforeSuite`; the test and `@AfterSuite` do not run      |
+| `@BeforeSuite` failure, `@AfterSuite(alwaysRun = true)`   | `beforeSuite`, `afterSuite`; the test does not run             |
+| Test failure                                               | `beforeSuite`, `test`, `afterSuite`                            |
+| `@AfterSuite` failure                                      | `beforeSuite`, `test`, `afterSuite`                            |
 
-Во всех четырёх случаях запуск ошибочный.
+In all four cases, the run ends with an error.
 
 <a id="scope"></a>
 
-## Граница вывода
+## Scope of the findings
 
-Результаты JUnit 5/6 фиксируют наблюдаемое поведение указанных версий. Javadocs
-`@BeforeSuite` и `@AfterSuite` не формулируют отдельную гарантию для исключения из
-`@BeforeSuite`, поэтому эксперимент не следует представлять как бессрочный контракт
-всех будущих версий. Для TestNG поведение `alwaysRun` дополнительно описано в
-официальной документации.
+The JUnit 5/6 results capture the observed behavior of the stated
+versions. The `@BeforeSuite` and `@AfterSuite` Javadocs do not spell out a
+separate guarantee for an exception from `@BeforeSuite`, so the experiment
+should not be treated as a permanent contract for all future versions. For
+TestNG, the behavior of `alwaysRun` is additionally described in the
+official documentation.
 
 <a id="verification-2026-10-26"></a>
 
-## Повторная проверка 26 октября 2026 года
+## Re-verification on October 26, 2026
 
-На JDK 21.0.10, Maven 3.9.12 и Surefire 3.6.0 отдельно выполнены шесть сценариев
-ошибки подготовки: два для JUnit 4.13.2, по одному для JUnit 5.14.4 и 6.1.3,
-два для TestNG 7.12.0 (с `alwaysRun = true` и без него). Последовательности
-`[EVENT]` совпали с указанными выше; событие `test` отсутствовало во всех шести.
-Каждая команда вернула код 1 из-за намеренного исключения в подготовке.
+On JDK 21.0.10, Maven 3.9.12, and Surefire 3.6.0, six setup-failure
+scenarios were run individually: two for JUnit 4.13.2, one each for JUnit
+5.14.4 and 6.1.3, and two for TestNG 7.12.0 (with and without
+`alwaysRun = true`). The `[EVENT]` sequences matched those listed above;
+the `test` event was absent in all six. Each command returned exit code 1
+due to the intentional exception in setup.
 
-После объединения проектов JUnit 4 отдельно повторены обе проверки ошибки
-`@BeforeClass` и `ClassRuleOrderTest`. Первые две сохранили ожидаемые события и
-код 1, проверка порядка Rules завершилась с кодом 0 и ожидаемой вложенностью.
+After merging the JUnit 4 projects, both the `@BeforeClass` failure checks
+and `ClassRuleOrderTest` were re-run separately. The first two kept the
+expected events and exit code 1; the Rules ordering check finished with
+exit code 0 and the expected nesting.
 
-Surefire может показывать `Tests run: 1` для синтетического `initializationError`
-в JUnit. Это не означает, что тело выбранного теста выполнилось: в этих сценариях
-оно печатает `[EVENT] test`, которого нет в выводе. В TestNG тест помечается
-пропущенным. XML-отчёты находятся в `target/surefire-reports/` соответствующего проекта;
-при повторных запусках отчёты могут перезаписываться или оставаться от прежних сценариев.
+Surefire may report `Tests run: 1` for a synthetic `initializationError`
+in JUnit. This does not mean the body of the selected test ran: in these
+scenarios it prints `[EVENT] test`, which is absent from the output. In
+TestNG, the test is marked as skipped. XML reports are located under
+`target/surefire-reports/` of the corresponding project; on repeated runs
+the reports may be overwritten or left over from earlier scenarios.
 
 <a id="license"></a>
 
-## Лицензия
+## License
 
-Код и сопроводительная документация распространяются по [MIT License](LICENSE).
-Авторское уведомление сохранено из исходного репозитория: Copyright (c) 2021 Andrii Olieinik.
-JUnit, TestNG и другие зависимости распространяются по собственным лицензиям.
+The code and accompanying documentation are distributed under the
+[MIT License](LICENSE). The original copyright notice from the source
+repository is preserved: Copyright (c) 2021 Andrii Olieinik. JUnit,
+TestNG, and other dependencies are distributed under their own licenses.
